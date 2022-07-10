@@ -9,6 +9,9 @@ from regex_patterns import IPV4_PATTERN
 load_dotenv()
 
 DNS_SERVER = getenv("DNS_SERVER")
+DOMAIN = getenv("DOMAIN")
+PASSWORD = getenv("PASSWORD")
+
 
 def is_valid_ipv4(ip:str) -> bool:
     """validates if valid ipv4 ip"""
@@ -36,21 +39,25 @@ def log_error():
     open('error.log','a').write(f"{now} [Error]: couldn't connect to the DNS_SERVER = {DNS_SERVER}\n")
 
 
-def curl(host,method:str = "PUT", connect_timeout:int = 5,max_time:int = 10,retry:int = 7,retry_delay = 0,retry_max_time:int = 40):
+def curl(host,method:str = "PUT",body:dict = {}, connect_timeout:int = 5,max_time:int = 10,retry:int = 7,retry_delay = 0,retry_max_time:int = 40):
     """"""
+
+    payload = f'-H "Content-Type: application/json" -d \'{ dumps(body) }\'' if body else ""
+    print(payload)
     return popen(f'curl -s -X {method.upper()} \
+                        {payload}\
+                        "{host}"\
                         --connect-timeout {connect_timeout}\
                         --max-time {max_time}\
                         --retry {retry}\
                         --retry-delay {retry_delay}\
                         --retry-max-time {retry_max_time}\
-                        "{host}"\
-                ').readline()
+                ')
 
 
 def check_public_ip():
     """"""
-    externalIP = is_valid_ipv4(curl("ifconfig.me", method="GET"))
+    externalIP = is_valid_ipv4(curl("ifconfig.me", method="GET").read())
     stored_ip = load_ip()
 
     if stored_ip["ip"] != externalIP or not bool(stored_ip['is_confirmed']):
@@ -59,18 +66,17 @@ def check_public_ip():
         stored_ip["is_confirmed"] = False
         store_ip(stored_ip)
         
-        print(bool(stored_ip['is_confirmed']))
-        if update_ddns() == "nice":
+        res = update_ddns(stored_ip["ip"])
+        if res["response"] == "Confirm":
             stored_ip["is_confirmed"] = True 
             store_ip(stored_ip)
         else :
             log_error()
 
 
-def update_ddns():
+def update_ddns(ip):
     """"""
-    return curl(DNS_SERVER, method="POST")
-    
+    return load(curl(DNS_SERVER,body={'password':PASSWORD,'domain':DOMAIN,'ip':ip}, method="PUT"))
 
 if __name__ == '__main__':
     check_public_ip()
